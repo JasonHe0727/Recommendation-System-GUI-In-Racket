@@ -1,54 +1,30 @@
 #lang racket
 
-(define (read-lines file)
+(define (read-lines file-name)
+  (define file (open-input-file file-name))
   (define (read-lines-iter file result)
     (define line (read-line file))
     (if (eof-object? line)
       result
       (read-lines-iter file (cons line result))))
-  (read-lines-iter file '()))
+  (define result (reverse (read-lines-iter file '())))
+  (close-input-port file)
+  result)
 
 (define (load-id-dict file-name)
-  (define file (open-input-file file-name))
-
-  (define id-dictionary 
-    (make-hash (map
-                 (lambda (line) (map string->number (string-split line ",")))
-                 (read-lines file))))
-
-  (close-input-port file)
-  id-dictionary)
+  (make-hash (map
+               (lambda (line) (map string->number (string-split line ",")))
+               (read-lines file-name))))
 
 (define (load-index-dict file-name)
-  (define file (open-input-file file-name))
-
-  (define index-dictionary 
-    (make-hash (map
-                 (lambda (line) (reverse (map string->number (string-split line ","))))
-                 (read-lines file))))
-
-  (close-input-port file)
-  index-dictionary)
+  (make-hash (map
+               (lambda (line) (map string->number (string-split line ",")))
+               (read-lines file-name))))
 
 (define (load-data file-name)
-  (define file (open-input-file file-name))
-  (define data (reverse (map 
-                          (lambda (line) (map string->number (string-split line " ")))
-                          (read-lines file))))
-  (close-input-port file)
-  data)
-
-(define user-id-dict (load-id-dict "record/userId_dictionary.txt"))
-(define movie-id-dict (load-id-dict "record/movieId_dictionary.txt"))
-
-(define index-user-id-dict (load-index-dict "record/userId_dictionary.txt"))
-(define index-movie-id-dict (load-index-dict "record/movieId_dictionary.txt"))
-
-(define user-similarities (load-data "record/user_similarities.txt"))
-(define movie-similarities (load-data "record/movie_similarities.txt"))
-
-(define user-sorted-list (sort (hash-keys user-id-dict) <))
-(define movie-sorted-list (sort (hash-keys movie-id-dict) <))
+  (map 
+    (lambda (line) (map string->number (string-split line " ")))
+    (read-lines file-name)))
 
 (define (index->user-id index)
   (car (hash-ref index-user-id-dict index)))
@@ -62,24 +38,56 @@
 (define (movie-id->index movie-id)
   (car (hash-ref movie-id-dict movie-id)))
 
+(define (first-user tuple) (car tuple))
+(define (second-user tuple) (cadr tuple))
+(define (first-movie tuple) (car tuple))
+(define (second-movie tuple) (cadr tuple))
+(define (distance tuple) (caddr tuple))
+
 (define (recommend-user user-id)
   (define index (user-id->index user-id))
   (map 
     (lambda (tuple) (string-join 
-                      (list (number->string (index->user-id (cadr tuple)))
-                            (number->string (caddr tuple))) ", "))
+                      (list (number->string (index->user-id (second-user tuple)))
+                            (number->string (distance tuple))) ", "))
     (filter
-      (lambda (tuple) (= (car tuple) index))
+      (lambda (tuple) (= (first-user tuple) index))
       user-similarities)))
 
 (define (recommend-movie movie-id)
   (define index (movie-id->index movie-id))
   (map 
-    (lambda (tuple) (string-join 
-                      (list (number->string (index->movie-id (cadr tuple)))
-                            (number->string (caddr tuple))) ", "))
+    (lambda (tuple) 
+      (define movie-id (list-ref movie-sorted-list (second-movie tuple)))
+      (define movie-name (hash-ref movie-id-name movie-id))
+      (string-join 
+        (list (number->string movie-id)
+              movie-name
+              (number->string (distance tuple))) ", "))
     (filter
-      (lambda (tuple) (= (car tuple) index))
+      (lambda (tuple) (= (first-movie tuple) index))
       movie-similarities)))
+
+(define user-id-dict (load-id-dict "record/userId_dictionary.txt"))
+(define movie-id-dict (load-id-dict "record/movieId_dictionary.txt"))
+
+(define index-user-id-dict (load-index-dict "record/userId_dictionary.txt"))
+(define index-movie-id-dict (load-index-dict "record/movieId_dictionary.txt"))
+
+; user_x user_y distance
+(define user-similarities (load-data "record/user_similarities.txt"))
+; movie_x movie_y distance
+(define movie-similarities (load-data "record/movie_similarities.txt"))
+
+(define user-sorted-list (sort (hash-keys user-id-dict) <))
+(define movie-sorted-list (sort (hash-keys movie-id-dict) <))
+
+(define movie-id-name
+  (make-hash
+    (map (lambda (tuple) (cons (string->number (car tuple)) (cadr tuple)))
+         (cdr
+           (map 
+             (lambda (line) (string-split line ","))
+             (read-lines "record/movies.csv"))))))
 
 (provide (all-defined-out))
